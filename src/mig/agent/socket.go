@@ -111,6 +111,13 @@ shutdown <id>	request agent shutdown. <id> is the agent's secret id
 				break
 			}
 			resp = "shutdown requested"
+		case "inject":
+			if len(fields) < 3 {
+				resp = "must specify routing key and message"
+				break
+			}
+			injectMessage(strings.Join(fields[2:], " "), fields[1], ctx)
+			resp = "injecting message"
 		default:
 			resp = "unknown command"
 		}

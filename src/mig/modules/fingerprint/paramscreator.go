@@ -3,7 +3,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 //
 // Contributor: Aaron Meihm ameihm@mozilla.com [:alm]
-package pkgprint
+package fingerprint
 
 import (
 	"flag"
@@ -52,7 +52,7 @@ func (r *run) ParamsParser(args []string) (interface{}, error) {
 		return nil, nil
 	}
 
-	fs.Init("pkgprint", flag.ContinueOnError)
+	fs.Init("fingerprint", flag.ContinueOnError)
 	fs.StringVar(&templateName, "template", "", "see help")
 	fs.IntVar(&depth, "depth", 10, "see help")
 	fs.StringVar(&root, "root", "/", "see help")

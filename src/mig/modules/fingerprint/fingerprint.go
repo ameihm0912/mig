@@ -3,7 +3,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 //
 // Contributor: Aaron Meihm ameihm@mozilla.com [:alm]
-package pkgprint
+package fingerprint
 
 import (
 	"bufio"
@@ -19,7 +19,7 @@ import (
 )
 
 func init() {
-	modules.Register("pkgprint", new(module))
+	modules.Register("fingerprint", new(module))
 }
 
 type module struct {
@@ -103,7 +103,7 @@ func (r *run) PrintResults(result modules.Result, foundOnly bool) (prints []stri
 
 	for _, x := range elem.Matches {
 		for _, y := range x.Entries {
-			resStr := fmt.Sprintf("pkgprint name=%v root=%v entry=%v", elem.Name, x.Root, y.Match)
+			resStr := fmt.Sprintf("fingerprint name=%v root=%v entry=%v", elem.Name, x.Root, y.Match)
 			prints = append(prints, resStr)
 		}
 	}

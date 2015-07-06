@@ -19,9 +19,7 @@ import (
 )
 
 func init() {
-	modules.Register("pkgprint", func() interface{} {
-		return new(Runner)
-	})
+	modules.Register("pkgprint", new(module))
 }
 
 type FPResult struct {
@@ -234,12 +232,19 @@ func buildResults(fpres FPResult, r *modules.Result) (buf []byte, err error) {
 	return
 }
 
-type Runner struct {
+type module struct {
+}
+
+func (m *module) NewRun() modules.Runner {
+	return new(run)
+}
+
+type run struct {
 	Parameters Parameters
 	Results    modules.Result
 }
 
-func (r Runner) Run(in io.Reader) (resStr string) {
+func (r *run) Run(in io.Reader) (resStr string) {
 	defer func() {
 		if e := recover(); e != nil {
 			r.Results.Errors = append(r.Results.Errors, fmt.Sprintf("%v", e))
@@ -279,7 +284,7 @@ func (r Runner) Run(in io.Reader) (resStr string) {
 	return
 }
 
-func (r Runner) ValidateParameters() (err error) {
+func (r *run) ValidateParameters() (err error) {
 	p := r.Parameters
 	if !p.TemplateMode {
 		return fmt.Errorf("currently template mode must be enabled")
@@ -323,7 +328,7 @@ func newParameters() *Parameters {
 	return &Parameters{SearchDepth: 10}
 }
 
-func (r Runner) PrintResults(result modules.Result, foundOnly bool) (prints []string, err error) {
+func (r *run) PrintResults(result modules.Result, foundOnly bool) (prints []string, err error) {
 	var elem FPResult
 
 	err = result.GetElements(&elem)

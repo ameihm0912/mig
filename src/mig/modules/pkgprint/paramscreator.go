@@ -39,7 +39,7 @@ mediawiki           - MediaWiki framework versions
 `, dash, dash, dash)
 }
 
-func (r Runner) ParamsParser(args []string) (interface{}, error) {
+func (r *run) ParamsParser(args []string) (interface{}, error) {
 	var (
 		fs           flag.FlagSet
 		templateName string

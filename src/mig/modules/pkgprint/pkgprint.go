@@ -22,6 +22,125 @@ func init() {
 	modules.Register("pkgprint", new(module))
 }
 
+type module struct {
+}
+
+func (m *module) NewRun() modules.Runner {
+	return new(run)
+}
+
+type run struct {
+	Parameters Parameters
+	Results    modules.Result
+}
+
+func (r *run) Run(in io.Reader) (resStr string) {
+	defer func() {
+		if e := recover(); e != nil {
+			r.Results.Errors = append(r.Results.Errors, fmt.Sprintf("%v", e))
+			r.Results.Success = false
+			err, _ := json.Marshal(r.Results)
+			resStr = string(err)
+			return
+		}
+	}()
+
+	runtime.GOMAXPROCS(1)
+
+	err := modules.ReadInputParameters(in, &r.Parameters)
+	if err != nil {
+		panic(err)
+	}
+
+	err = r.ValidateParameters()
+	if err != nil {
+		panic(err)
+	}
+
+	if r.Parameters.TemplateMode {
+		fpres, err := executeTemplate(r.Parameters.TemplateParams.Name, r.Parameters.SearchDepth, r.Parameters.SearchRoot)
+		if err != nil {
+			panic(err)
+		}
+		buf, err := buildResults(fpres, &r.Results)
+		if err != nil {
+			panic(err)
+		}
+		resStr = string(buf)
+		return
+	}
+
+	panic("no function specified")
+	return
+}
+
+func (r *run) ValidateParameters() (err error) {
+	p := r.Parameters
+	if !p.TemplateMode {
+		return fmt.Errorf("currently template mode must be enabled")
+	}
+
+	// If template mode is in use, make sure a valid template has been
+	// specified.
+	if fp := getTemplateFingerprint(p.TemplateParams.Name); fp == nil {
+		return fmt.Errorf("invalid template %v", p.TemplateParams.Name)
+	}
+
+	if p.SearchDepth <= 0 {
+		return fmt.Errorf("invalid search depth")
+	}
+
+	return
+}
+
+func (r *run) PrintResults(result modules.Result, foundOnly bool) (prints []string, err error) {
+	var elem FPResult
+
+	err = result.GetElements(&elem)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, x := range elem.Matches {
+		for _, y := range x.Entries {
+			resStr := fmt.Sprintf("pkgprint name=%v root=%v entry=%v", elem.Name, x.Root, y.Match)
+			prints = append(prints, resStr)
+		}
+	}
+	if !foundOnly {
+		for _, we := range result.Errors {
+			prints = append(prints, we)
+		}
+	}
+
+	return
+}
+
+type Parameters struct {
+	// Enable or disable template mode in the module. When using template
+	// mode, hardcoded fingerprints are used. In the future, this will
+	// support being set to false to allow the client to supply more
+	// advanced parameters allowing for more flexible scanning.
+	//
+	// To do this we need to figure out a way to be able to specify
+	// flexible fingerprints from the mig command line side, but prevent
+	// the use of fingerprints that could return data from more sensitive
+	// areas of the file system (e.g., /etc/shadow, etc).
+	TemplateMode   bool           `json:"templatemode"`
+	TemplateParams TemplateParams `json:"template"`
+
+	SearchDepth int    `json:"depth"`
+	SearchRoot  string `json:"root"`
+}
+
+type TemplateParams struct {
+	Name string `json:"name"`
+}
+
+func newParameters() *Parameters {
+	return &Parameters{SearchDepth: 10}
+}
+
 type FPResult struct {
 	Name    string       `json:"name"`
 	Matches []MatchGroup `json:"matches"`
@@ -229,124 +348,5 @@ func buildResults(fpres FPResult, r *modules.Result) (buf []byte, err error) {
 	}
 	r.Elements = fpres
 	buf, err = json.Marshal(r)
-	return
-}
-
-type module struct {
-}
-
-func (m *module) NewRun() modules.Runner {
-	return new(run)
-}
-
-type run struct {
-	Parameters Parameters
-	Results    modules.Result
-}
-
-func (r *run) Run(in io.Reader) (resStr string) {
-	defer func() {
-		if e := recover(); e != nil {
-			r.Results.Errors = append(r.Results.Errors, fmt.Sprintf("%v", e))
-			r.Results.Success = false
-			err, _ := json.Marshal(r.Results)
-			resStr = string(err)
-			return
-		}
-	}()
-
-	runtime.GOMAXPROCS(1)
-
-	err := modules.ReadInputParameters(in, &r.Parameters)
-	if err != nil {
-		panic(err)
-	}
-
-	err = r.ValidateParameters()
-	if err != nil {
-		panic(err)
-	}
-
-	if r.Parameters.TemplateMode {
-		fpres, err := executeTemplate(r.Parameters.TemplateParams.Name, r.Parameters.SearchDepth, r.Parameters.SearchRoot)
-		if err != nil {
-			panic(err)
-		}
-		buf, err := buildResults(fpres, &r.Results)
-		if err != nil {
-			panic(err)
-		}
-		resStr = string(buf)
-		return
-	}
-
-	panic("no function specified")
-	return
-}
-
-func (r *run) ValidateParameters() (err error) {
-	p := r.Parameters
-	if !p.TemplateMode {
-		return fmt.Errorf("currently template mode must be enabled")
-	}
-
-	// If template mode is in use, make sure a valid template has been
-	// specified.
-	if fp := getTemplateFingerprint(p.TemplateParams.Name); fp == nil {
-		return fmt.Errorf("invalid template %v", p.TemplateParams.Name)
-	}
-
-	if p.SearchDepth <= 0 {
-		return fmt.Errorf("invalid search depth")
-	}
-
-	return
-}
-
-type Parameters struct {
-	// Enable or disable template mode in the module. When using template
-	// mode, hardcoded fingerprints are used. In the future, this will
-	// support being set to false to allow the client to supply more
-	// advanced parameters allowing for more flexible scanning.
-	//
-	// To do this we need to figure out a way to be able to specify
-	// flexible fingerprints from the mig command line side, but prevent
-	// the use of fingerprints that could return data from more sensitive
-	// areas of the file system (e.g., /etc/shadow, etc).
-	TemplateMode   bool           `json:"templatemode"`
-	TemplateParams TemplateParams `json:"template"`
-
-	SearchDepth int    `json:"depth"`
-	SearchRoot  string `json:"root"`
-}
-
-type TemplateParams struct {
-	Name string `json:"name"`
-}
-
-func newParameters() *Parameters {
-	return &Parameters{SearchDepth: 10}
-}
-
-func (r *run) PrintResults(result modules.Result, foundOnly bool) (prints []string, err error) {
-	var elem FPResult
-
-	err = result.GetElements(&elem)
-	if err != nil {
-		panic(err)
-	}
-
-	for _, x := range elem.Matches {
-		for _, y := range x.Entries {
-			resStr := fmt.Sprintf("pkgprint name=%v root=%v entry=%v", elem.Name, x.Root, y.Match)
-			prints = append(prints, resStr)
-		}
-	}
-	if !foundOnly {
-		for _, we := range result.Errors {
-			prints = append(prints, we)
-		}
-	}
-
 	return
 }

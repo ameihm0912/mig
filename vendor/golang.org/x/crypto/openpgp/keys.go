@@ -368,8 +368,10 @@ EachPacket:
 				}
 
 				if (sig.SigType == packet.SigTypePositiveCert || sig.SigType == packet.SigTypeGenericCert) && sig.IssuerKeyId != nil && *sig.IssuerKeyId == e.PrimaryKey.KeyId {
-					if err = e.PrimaryKey.VerifyUserIdSignature(pkt.Id, e.PrimaryKey, sig); err != nil {
-						return nil, errors.StructuralError("user ID self-signature invalid: " + err.Error())
+					err = e.PrimaryKey.VerifyUserIdSignature(pkt.Id, e.PrimaryKey, sig)
+					// Don't abort on first invalid signature, try all packets and see if any match
+					if err != nil {
+						continue
 					}
 					current.SelfSignature = sig
 					break

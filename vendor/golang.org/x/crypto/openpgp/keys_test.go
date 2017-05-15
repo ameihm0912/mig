@@ -102,6 +102,23 @@ func TestGoodCrossSignature(t *testing.T) {
 	}
 }
 
+func TestGNUDummyPrivateKey(t *testing.T) {
+	// This public key has a signing subkey, but has a dummy placeholder
+	// instead of the real private key. It's used in scenarios where the
+	// main private key is witheld and only signing is allowed (e.g. build
+	// servers).
+	keys, err := ReadArmoredKeyRing(bytes.NewBufferString(onlySubkeyNoPrivateKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) != 1 {
+		t.Errorf("Failed to accept key with dummy private key, %d", len(keys))
+	}
+	if len(keys[0].Subkeys) != 1 {
+		t.Errorf("Failed to accept good subkey, %d", len(keys[0].Subkeys))
+	}
+}
+
 // TestExternallyRevokableKey attempts to load and parse a key with a third party revocation permission.
 func TestExternallyRevocableKey(t *testing.T) {
 	kring, _ := ReadKeyRing(readerFromHex(subkeyUsageHex))
@@ -402,3 +419,33 @@ SqLHvbKh2dL/RXymC3+rjPvQf5cup9bPxNMa6WagdYBNAfzWGtkVISeaQW+cTEp/
 MtgVijRGXR/lGLGETPg2X3Afwn9N9bLMBkBprKgbBqU7lpaoPupxT61bL70=
 =vtbN
 -----END PGP PUBLIC KEY BLOCK-----`
+
+const onlySubkeyNoPrivateKey = `-----BEGIN PGP PRIVATE KEY BLOCK-----
+Version: GnuPG v1
+
+lQCVBFggvocBBAC7vBsHn7MKmS6IiiZNTXdciplVgS9cqVd+RTdIAoyNTcsiV1H0
+GQ3QtodOPeDlQDNoqinqaobd7R9g3m3hS53Nor7yBZkCWQ5x9v9JxRtoAq0sklh1
+I1X2zEqZk2l6YrfBF/64zWrhjnW3j23szkrAIVu0faQXbQ4z56tmZrw11wARAQAB
+/gdlAkdOVQG0CUdOVSBEdW1teYi4BBMBAgAiBQJYIL6HAhsDBgsJCAcDAgYVCAIJ
+CgsEFgIDAQIeAQIXgAAKCRCd1xxWp1CYAnjGA/9synn6ZXJUKAXQzySgmCZvCIbl
+rqBfEpxwLG4Q/lONhm5vthAE0z49I8hj5Gc5e2tLYUtq0o0OCRdCrYHa/efOYWpJ
+6RsK99bePOisVzmOABLIgZkcr022kHoMCmkPgv9CUGKP1yqbGl+zzAwQfUjRUmvD
+ZIcWLHi2ge4GzPMPi50B2ARYIL6cAQQAxWHnicKejAFcFcF1/3gUSgSH7eiwuBPX
+M7vDdgGzlve1o1jbV4tzrjN9jsCl6r0nJPDMfBSzgLr1auNTRG6HpJ4abcOx86ED
+Ad+avDcQPZb7z3dPhH/gb2lQejZsHh7bbeOS8WMSzHV3RqCLd8J/xwWPNR5zKn1f
+yp4IGfopidMAEQEAAQAD+wQOelnR82+dxyM2IFmZdOB9wSXQeCVOvxSaNMh6Y3lk
+UOOkO8Nlic4x0ungQRvjoRs4wBmCuwFK/MII6jKui0B7dn/NDf51i7rGdNGuJXDH
+e676By1sEY/NGkc74jr74T+5GWNU64W0vkpfgVmjSAzsUtpmhJMXsc7beBhJdnVl
+AgDKCb8hZqj1alcdmLoNvb7ibA3K/V8J462CPD7bMySPBa/uayoFhNxibpoXml2r
+oOtHa5izF3b0/9JY97F6rqkdAgD6GdTJ+xmlCoz1Sewoif1I6krq6xoa7gOYpIXo
+UL1Afr+LiJeyAnF/M34j/kjIVmPanZJjry0kkjHE5ILjH3uvAf4/6n9np+Th8ujS
+YDCIzKwR7639+H+qccOaddCep8Y6KGUMVdD/vTKEx1rMtK+hK/CDkkkxnFslifMJ
+kqoqv3WUqCWJAT0EGAECAAkFAlggvpwCGwIAqAkQndccVqdQmAKdIAQZAQIABgUC
+WCC+nAAKCRDmGUholQPwvQk+A/9latnSsR5s5/1A9TFki11GzSEnfLbx46FYOdkW
+n3YBxZoPQGxNA1vIn8GmouxZInw9CF4jdOJxEdzLlYQJ9YLTLtN5tQEMl/19/bR8
+/qLacAZ9IOezYRWxxZsyn6//jfl7A0Y+FV59d4YajKkEfItcIIlgVBSW6T+TNQT3
+R+EH5HJ/A/4/AN0CmBhhE2vGzTnVU0VPrE4V64pjn1rufFdclgpixNZCuuqpKpoE
+VVHn6mnBf4njKjZrAGPs5kfQ+H4NsM7v3Zz4yV6deu9FZc4O6E+V1WJ38rO8eBix
+7G2jko106CC6vtxsCPVIzY7aaG3H5pjRtomw+pX7SzrQ7FUg2PGumg==
+=F/T0
+-----END PGP PRIVATE KEY BLOCK-----`

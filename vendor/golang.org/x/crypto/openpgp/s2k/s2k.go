@@ -7,6 +7,7 @@
 package s2k // import "golang.org/x/crypto/openpgp/s2k"
 
 import (
+	"bytes"
 	"crypto"
 	"hash"
 	"io"
@@ -151,32 +152,46 @@ func Iterated(out []byte, h hash.Hash, in []byte, salt []byte, count int) {
 	}
 }
 
+// hashIdToHash returns an instance of the hasher specified by the id.
+func hashIdToHash(id byte) (hash.Hash, error) {
+	hash, ok := HashIdToHash(id)
+	if !ok {
+		return nil, errors.UnsupportedError("hash for S2K function: " + strconv.Itoa(int(id)))
+	}
+	if !hash.Available() {
+		return nil, errors.UnsupportedError("hash not available: " + strconv.Itoa(int(hash)))
+	}
+	return hash.New(), nil
+}
+
 // Parse reads a binary specification for a string-to-key transformation from r
 // and returns a function which performs that transform.
 func Parse(r io.Reader) (f func(out, in []byte), err error) {
-	var buf [9]byte
+	var (
+		buf [9]byte
+		h   hash.Hash
+	)
 
 	_, err = io.ReadFull(r, buf[:2])
 	if err != nil {
 		return
 	}
 
-	hash, ok := HashIdToHash(buf[1])
-	if !ok {
-		return nil, errors.UnsupportedError("hash for S2K function: " + strconv.Itoa(int(buf[1])))
-	}
-	if !hash.Available() {
-		return nil, errors.UnsupportedError("hash not available: " + strconv.Itoa(int(hash)))
-	}
-	h := hash.New()
-
 	switch buf[0] {
 	case 0:
+		h, err = hashIdToHash(buf[1])
+		if err != nil {
+			return
+		}
 		f := func(out, in []byte) {
 			Simple(out, h, in)
 		}
 		return f, nil
 	case 1:
+		h, err = hashIdToHash(buf[1])
+		if err != nil {
+			return
+		}
 		_, err = io.ReadFull(r, buf[:8])
 		if err != nil {
 			return
@@ -186,6 +201,10 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 		}
 		return f, nil
 	case 3:
+		h, err = hashIdToHash(buf[1])
+		if err != nil {
+			return
+		}
 		_, err = io.ReadFull(r, buf[:9])
 		if err != nil {
 			return
@@ -195,8 +214,19 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 			Iterated(out, h, in, buf[:8], count)
 		}
 		return f, nil
+	case 101:
+		_, err = io.ReadFull(r, buf[:4])
+		if err != nil {
+			return
+		}
+		if bytes.Compare(buf[:3], []byte("GNU")) != 0 {
+			return nil, errors.UnsupportedError("S2K private function")
+		}
+		if buf[3] != 0x01 {
+			return nil, errors.UnsupportedError("GNU S2K function mode")
+		}
+		return nil, nil
 	}
-
 	return nil, errors.UnsupportedError("S2K function")
 }
 

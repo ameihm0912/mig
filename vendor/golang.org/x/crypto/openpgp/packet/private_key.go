@@ -112,6 +112,9 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 		if s2kType == 254 {
 			pk.sha1Checksum = true
 		}
+		if pk.s2k == nil {
+			return
+		}
 	default:
 		return errors.UnsupportedError("deprecated s2k function in private key")
 	}
@@ -233,7 +236,7 @@ func serializeECDSAPrivateKey(w io.Writer, priv *ecdsa.PrivateKey) error {
 
 // Decrypt decrypts an encrypted private key using a passphrase.
 func (pk *PrivateKey) Decrypt(passphrase []byte) error {
-	if !pk.Encrypted {
+	if !pk.Encrypted || pk.s2k == nil {
 		return nil
 	}
 

@@ -13,7 +13,7 @@ import (
 	"path"
 )
 
-type Context struct {
+type context struct {
 	Channels struct {
 		Log        chan mig.Log
 		ExitNotify chan bool
@@ -36,14 +36,14 @@ type Context struct {
 	ClientConf client.Configuration
 }
 
-func initContext(config string) (ctx Context, err error) {
+func initContext(config string) (ctx context, err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			err = fmt.Errorf("initContext() -> %v", e)
+			err = fmt.Errorf("initcontext() -> %v", e)
 		}
 	}()
 
-	ctx = Context{}
+	ctx = context{}
 	ctx.Channels.Log = make(chan mig.Log, 37)
 	ctx.Channels.Results = make(chan mig.RunnerResult, 64)
 	ctx.Channels.ExitNotify = make(chan bool, 64)

@@ -18,7 +18,7 @@ import (
 	"mig.ninja/mig"
 )
 
-var ctx Context
+var ctx context
 var wg sync.WaitGroup
 
 func main() {

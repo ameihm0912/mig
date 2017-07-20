@@ -1,0 +1,5 @@
+[api]
+    url = "https://migapi:1664/api/v1/"
+[gpg]
+    home = ""
+    keyid = ""

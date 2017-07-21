@@ -48,7 +48,7 @@ var GetRequestorFunction = getDefaultRequestor
 // GetClientFunction is a variable which points to the function that will be called in
 // NewClient to return a type which implements Client. By default, we call NewDefaultClient
 // which will return a MIGClient.
-var GetClientFunction = NewDefaultClient
+var GetClientFunction func(Configuration, string) (Client, error) = NewDefaultClient
 
 // getDefaultRequestor returns the default request type that will be used to make API requests
 // by MIGClient (a standard http.Client with a custom transport configuration).
@@ -182,18 +182,20 @@ func NewClient(conf Configuration, version string) (Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &cli, nil
+	return cli, nil
 }
 
 // NewClient initiates a new instance of a Client
-func NewDefaultClient(conf Configuration, version string) (cli MIGClient, err error) {
+func NewDefaultClient(conf Configuration, version string) (Client, error) {
+	var err error
+	cli := &MIGClient{}
 	cli.Version = version
 	cli.Conf = conf
 	cli.API = GetRequestorFunction(conf)
 	// If the client is using API key authentication to access the API, we don't have
 	// anything left to do here.
 	if conf.GPG.UseAPIKeyAuth != "" {
-		return
+		return cli, nil
 	}
 	// if the env variable to the gpg agent socket isn't set, try to
 	// find the socket and set the variable
@@ -212,9 +214,9 @@ func NewDefaultClient(conf Configuration, version string) (cli MIGClient, err er
 	if err != nil {
 		err = fmt.Errorf("failed to generate a security token using key %v from %v: %v\n",
 			conf.GPG.KeyID, conf.GPG.Home+"/secring.gpg", err)
-		return
+		return cli, err
 	}
-	return
+	return cli, nil
 }
 
 // ReadConfiguration loads a client configuration from a local configuration file

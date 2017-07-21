@@ -221,6 +221,7 @@ go_vendor_dependencies:
 	$(GOGETTER) github.com/cheggaaa/pb
 	$(GOGETTER) github.com/stretchr/testify
 	$(GOGETTER) github.com/fsnotify/fsnotify
+	$(GOGETTER) github.com/spf13/afero
 	echo 'removing .git from vendored pkg and moving them to vendor'
 	find .tmpdeps/src -name ".git" ! -name ".gitignore" -exec rm -rf {} \; || exit 0
 	[ -d vendor ] && git rm -rf vendor/ || exit 0

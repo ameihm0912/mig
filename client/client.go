@@ -34,21 +34,25 @@ import (
 
 var version string
 
-// MIGHTTPClient is an interface wrapping the standard http.Client type we will
-// use to make requests.
-type MIGHTTPClient interface {
+// MIGClientRequestor is an interface around the standard http.Client type, specifically
+// the Do method which is used to make low-level API requests.
+type MIGClientRequestor interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-// GetTransport indicates the function that will be used to request a client
-// for making requests. By default, this returns an http.Client type but can be
-// overridden to replace the standard client transport with anything that implements
-// MIGHTTPClient.
-var GetTransport = getDefaultTransport
+// GetRequestor is a variable which points to the function that will be called in
+// NewDefaultClient to set the MIGClient API value. This variable can be changed prior
+// to calling NewClient to modify the default requestor used by the client.
+var GetRequestorFunction = getDefaultRequestor
 
-// The default transport type the MIG client will use, in this case we allocate and
-// return an http.Client.
-func getDefaultTransport(conf Configuration) MIGHTTPClient {
+// GetClientFunction is a variable which points to the function that will be called in
+// NewClient to return a type which implements Client. By default, we call NewDefaultClient
+// which will return a MIGClient.
+var GetClientFunction = NewDefaultClient
+
+// getDefaultRequestor returns the default request type that will be used to make API requests
+// by MIGClient (a standard http.Client with a custom transport configuration).
+func getDefaultRequestor(conf Configuration) MIGClientRequestor {
 	tr := &http.Transport{
 		DisableCompression: false,
 		DisableKeepAlives:  false,
@@ -71,10 +75,47 @@ func getDefaultTransport(conf Configuration) MIGHTTPClient {
 	return &http.Client{Transport: tr}
 }
 
-// A Client provides all the needed functionalities to interact with the MIG API.
-// It should be initialized with a proper configuration file.
-type Client struct {
-	API     MIGHTTPClient
+// Client is an interface indicating the various functions types must implement to be used
+// as a MIG client.
+type Client interface {
+	CompressAction(mig.Action) (mig.Action, error)
+	DisableDebug()
+	Do(*http.Request) (*http.Response, error)
+	EnableDebug()
+	EvaluateAgentTarget(string) ([]mig.Agent, error)
+	FetchActionResults(mig.Action) ([]mig.Command, error)
+	FollowAction(mig.Action, int) error
+	GetAction(float64) (mig.Action, []cljs.Link, error)
+	GetAgent(float64) (mig.Agent, error)
+	GetAPIResource(string) (*cljs.Resource, error)
+	GetConfiguration() Configuration
+	GetCommand(float64) (mig.Command, error)
+	GetInvestigator(float64) (mig.Investigator, error)
+	GetLoaderEntry(float64) (mig.LoaderEntry, error)
+	GetManifestLoaders(float64) ([]mig.LoaderEntry, error)
+	GetManifestRecord(float64) (mig.ManifestRecord, error)
+	LoaderEntryExpect(mig.LoaderEntry, string) error
+	LoaderEntryKey(mig.LoaderEntry) (mig.LoaderEntry, error)
+	LoaderEntryStatus(mig.LoaderEntry, bool) error
+	ManifestRecordStatus(mig.ManifestRecord, string) error
+	PostAction(mig.Action) (mig.Action, error)
+	PostInvestigator(string, []byte, mig.InvestigatorPerms) (mig.Investigator, error)
+	PostInvestigatorAPIKeyStatus(float64, string) (mig.Investigator, error)
+	PostInvestigatorPerms(float64, mig.InvestigatorPerms) error
+	PostInvestigatorStatus(float64, string) error
+	PostManifestSignature(mig.ManifestRecord, string) error
+	PostNewLoader(mig.LoaderEntry) (mig.LoaderEntry, error)
+	PostNewManifest(mig.ManifestRecord) error
+	PrintActionResults(mig.Action, string, string) error
+	ResolveTargetMacro(string) string
+	SignAction(mig.Action) (mig.Action, error)
+	SignManifest(mig.ManifestRecord) (string, error)
+}
+
+// MIGClient is the default client type used under normal circumstances for requests to the
+// API.
+type MIGClient struct {
+	API     MIGClientRequestor
 	Token   string
 	Conf    Configuration
 	Version string
@@ -133,11 +174,22 @@ func ClientPassphrase(s string) {
 	clientPassphrase = s
 }
 
+// NewClient returns a new instance of a MIG client. A type implementing Client
+// is returned, but the underlying type itself depends on the value of GetClientFunction.
+// By default, a standard MIGClient is returned.
+func NewClient(conf Configuration, version string) (Client, error) {
+	cli, err := GetClientFunction(conf, version)
+	if err != nil {
+		return nil, err
+	}
+	return &cli, nil
+}
+
 // NewClient initiates a new instance of a Client
-func NewClient(conf Configuration, version string) (cli Client, err error) {
+func NewDefaultClient(conf Configuration, version string) (cli MIGClient, err error) {
 	cli.Version = version
 	cli.Conf = conf
-	cli.API = GetTransport(conf)
+	cli.API = GetRequestorFunction(conf)
 	// If the client is using API key authentication to access the API, we don't have
 	// anything left to do here.
 	if conf.GPG.UseAPIKeyAuth != "" {
@@ -324,7 +376,7 @@ func MakeConfiguration(file string) (err error) {
 
 // Do is a thin wrapper around http.Client.Do() that inserts an authentication header
 // to the outgoing request
-func (cli Client) Do(r *http.Request) (resp *http.Response, err error) {
+func (cli MIGClient) Do(r *http.Request) (resp *http.Response, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("Do() -> %v", e)
@@ -388,7 +440,7 @@ func (cli Client) Do(r *http.Request) (resp *http.Response, err error) {
 // GetAPIResource retrieves a cljs resource from a target endpoint. The target must be the relative
 // to the API URL passed in the configuration. For example, if the API URL is `http://localhost:12345/api/v1/`
 // then target could only be set to `dashboard` to retrieve `http://localhost:12345/api/v1/dashboard`
-func (cli Client) GetAPIResource(target string) (resource *cljs.Resource, err error) {
+func (cli MIGClient) GetAPIResource(target string) (resource *cljs.Resource, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("GetAPIResource() -> %v", e)
@@ -439,7 +491,7 @@ func (cli Client) GetAPIResource(target string) (resource *cljs.Resource, err er
 }
 
 // GetAction retrieves a MIG Action from the API using its Action ID
-func (cli Client) GetAction(aid float64) (a mig.Action, links []cljs.Link, err error) {
+func (cli MIGClient) GetAction(aid float64) (a mig.Action, links []cljs.Link, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("GetAction() -> %v", e)
@@ -463,7 +515,7 @@ func (cli Client) GetAction(aid float64) (a mig.Action, links []cljs.Link, err e
 
 // GetManifestRecord retrieves a MIG manifest record from the API using the
 // record ID
-func (cli Client) GetManifestRecord(mid float64) (mr mig.ManifestRecord, err error) {
+func (cli MIGClient) GetManifestRecord(mid float64) (mr mig.ManifestRecord, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("GetManifestRecord() -> %v", e)
@@ -485,7 +537,7 @@ func (cli Client) GetManifestRecord(mid float64) (mr mig.ManifestRecord, err err
 }
 
 // Retrieve list of known loader entries that will match manifest mid
-func (cli Client) GetManifestLoaders(mid float64) (ldrs []mig.LoaderEntry, err error) {
+func (cli MIGClient) GetManifestLoaders(mid float64) (ldrs []mig.LoaderEntry, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("GetManifestLoaders() -> %v", e)
@@ -513,7 +565,7 @@ func (cli Client) GetManifestLoaders(mid float64) (ldrs []mig.LoaderEntry, err e
 }
 
 // Change the status of an existing manifest record
-func (cli Client) ManifestRecordStatus(mr mig.ManifestRecord, status string) (err error) {
+func (cli MIGClient) ManifestRecordStatus(mr mig.ManifestRecord, status string) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("ResetManifestRecord() -> %v", e)
@@ -551,7 +603,7 @@ func (cli Client) ManifestRecordStatus(mr mig.ManifestRecord, status string) (er
 }
 
 // Post a new manifest record for storage through the API
-func (cli Client) PostNewManifest(mr mig.ManifestRecord) (err error) {
+func (cli MIGClient) PostNewManifest(mr mig.ManifestRecord) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("PostNewManifest() -> %v", e)
@@ -593,7 +645,7 @@ func (cli Client) PostNewManifest(mr mig.ManifestRecord) (err error) {
 }
 
 // Add a new signature to an existing manifest known to the API
-func (cli Client) PostManifestSignature(mr mig.ManifestRecord, sig string) (err error) {
+func (cli MIGClient) PostManifestSignature(mr mig.ManifestRecord, sig string) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("PostManifestSignature() -> %v", e)
@@ -631,7 +683,7 @@ func (cli Client) PostManifestSignature(mr mig.ManifestRecord, sig string) (err 
 }
 
 // GetLoaderEntry retrieves a MIG loader entry from the API using the record ID
-func (cli Client) GetLoaderEntry(lid float64) (le mig.LoaderEntry, err error) {
+func (cli MIGClient) GetLoaderEntry(lid float64) (le mig.LoaderEntry, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("GetLoaderEntry() -> %v", e)
@@ -653,7 +705,7 @@ func (cli Client) GetLoaderEntry(lid float64) (le mig.LoaderEntry, err error) {
 }
 
 // Change the expect fields of an existing loader entry
-func (cli Client) LoaderEntryExpect(le mig.LoaderEntry, eval string) (err error) {
+func (cli MIGClient) LoaderEntryExpect(le mig.LoaderEntry, eval string) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("LoaderEntryExpect() -> %v", e)
@@ -693,7 +745,7 @@ func (cli Client) LoaderEntryExpect(le mig.LoaderEntry, eval string) (err error)
 }
 
 // Change the status of an existing loader entry
-func (cli Client) LoaderEntryStatus(le mig.LoaderEntry, status bool) (err error) {
+func (cli MIGClient) LoaderEntryStatus(le mig.LoaderEntry, status bool) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("LoaderEntryStatus() -> %v", e)
@@ -735,7 +787,7 @@ func (cli Client) LoaderEntryStatus(le mig.LoaderEntry, status bool) (err error)
 }
 
 // Change the key on an existing loader entry
-func (cli Client) LoaderEntryKey(le mig.LoaderEntry) (newle mig.LoaderEntry, err error) {
+func (cli MIGClient) LoaderEntryKey(le mig.LoaderEntry) (newle mig.LoaderEntry, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("LoaderEntryKey() -> %v", e)
@@ -777,7 +829,7 @@ func (cli Client) LoaderEntryKey(le mig.LoaderEntry) (newle mig.LoaderEntry, err
 }
 
 // Post a new loader entry for storage through the API
-func (cli Client) PostNewLoader(le mig.LoaderEntry) (newle mig.LoaderEntry, err error) {
+func (cli MIGClient) PostNewLoader(le mig.LoaderEntry) (newle mig.LoaderEntry, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("PostNewLoader() -> %v", e)
@@ -828,7 +880,7 @@ func (cli Client) PostNewLoader(le mig.LoaderEntry) (newle mig.LoaderEntry, err 
 }
 
 // PostAction submits a MIG Action to the API and returns the reflected action with API ID
-func (cli Client) PostAction(a mig.Action) (a2 mig.Action, err error) {
+func (cli MIGClient) PostAction(a mig.Action) (a2 mig.Action, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("PostAction() -> %v", e)
@@ -926,7 +978,7 @@ func ValueToManifestRecord(v interface{}) (m mig.ManifestRecord, err error) {
 	return
 }
 
-func (cli Client) GetCommand(cmdid float64) (cmd mig.Command, err error) {
+func (cli MIGClient) GetCommand(cmdid float64) (cmd mig.Command, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("GetCommand() -> %v", e)
@@ -964,7 +1016,7 @@ func ValueToCommand(v interface{}) (cmd mig.Command, err error) {
 	return
 }
 
-func (cli Client) GetAgent(agtid float64) (agt mig.Agent, err error) {
+func (cli MIGClient) GetAgent(agtid float64) (agt mig.Agent, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("GetAgent() -> %v", e)
@@ -1002,7 +1054,7 @@ func ValueToAgent(v interface{}) (agt mig.Agent, err error) {
 	return
 }
 
-func (cli Client) GetInvestigator(iid float64) (inv mig.Investigator, err error) {
+func (cli MIGClient) GetInvestigator(iid float64) (inv mig.Investigator, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("GetInvestigator() -> %v", e)
@@ -1025,7 +1077,7 @@ func (cli Client) GetInvestigator(iid float64) (inv mig.Investigator, err error)
 
 // PostInvestigator creates an Investigator and returns the reflected investigator. If pubkey
 // is zero-length, the investigator will be created without a PGP public key.
-func (cli Client) PostInvestigator(name string, pubkey []byte, pset mig.InvestigatorPerms) (inv mig.Investigator, err error) {
+func (cli MIGClient) PostInvestigator(name string, pubkey []byte, pset mig.InvestigatorPerms) (inv mig.Investigator, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("PostInvestigator() -> %v", e)
@@ -1096,7 +1148,7 @@ func (cli Client) PostInvestigator(name string, pubkey []byte, pset mig.Investig
 }
 
 // PostInvestigatorPerms sets permission on an investigator
-func (cli Client) PostInvestigatorPerms(iid float64, perm mig.InvestigatorPerms) (err error) {
+func (cli MIGClient) PostInvestigatorPerms(iid float64, perm mig.InvestigatorPerms) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("PostInvestigatorPerms() -> %v", e)
@@ -1137,7 +1189,7 @@ func (cli Client) PostInvestigatorPerms(iid float64, perm mig.InvestigatorPerms)
 }
 
 // PostInvestigatorStatus updates the status of an Investigator
-func (cli Client) PostInvestigatorStatus(iid float64, newstatus string) (err error) {
+func (cli MIGClient) PostInvestigatorStatus(iid float64, newstatus string) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("PostInvestigatorStatus() -> %v", e)
@@ -1181,7 +1233,7 @@ func (cli Client) PostInvestigatorStatus(iid float64, newstatus string) (err err
 // assigned key. newstatus should be set to either 'active' or 'disabled'. If a key already
 // exists for an investigator, calling this with a status of 'active' will cause the existing
 // key to be replaced.
-func (cli Client) PostInvestigatorAPIKeyStatus(iid float64, newstatus string) (inv mig.Investigator, err error) {
+func (cli MIGClient) PostInvestigatorAPIKeyStatus(iid float64, newstatus string) (inv mig.Investigator, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("PostInvestigatorAPIKey() -> %v", e)
@@ -1240,7 +1292,7 @@ func ValueToInvestigator(v interface{}) (inv mig.Investigator, err error) {
 
 // MakeSignedToken encrypts a timestamp and a random number with the users GPG key
 // to use as an auth token with the API
-func (cli Client) MakeSignedToken() (token string, err error) {
+func (cli MIGClient) MakeSignedToken() (token string, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("MakeSignedToken() -> %v", e)
@@ -1266,7 +1318,7 @@ func (cli Client) MakeSignedToken() (token string, err error) {
 //
 // This function should be called on the action prior to signing it for submission
 // to the API.
-func (cli Client) CompressAction(a mig.Action) (comp_action mig.Action, err error) {
+func (cli MIGClient) CompressAction(a mig.Action) (comp_action mig.Action, err error) {
 	comp_action = a
 	defer func() {
 		if e := recover(); e != nil {
@@ -1290,7 +1342,7 @@ func (cli Client) CompressAction(a mig.Action) (comp_action mig.Action, err erro
 
 // SignAction takes a MIG Action, signs it with the key identified in the configuration
 // and returns the signed action
-func (cli Client) SignAction(a mig.Action) (signed_action mig.Action, err error) {
+func (cli MIGClient) SignAction(a mig.Action) (signed_action mig.Action, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("SignAction() -> %v", e)
@@ -1312,7 +1364,7 @@ func (cli Client) SignAction(a mig.Action) (signed_action mig.Action, err error)
 
 // SignManifest takes a MIG manifest record, signs it with the key identified
 // in the configuration and returns the signature
-func (cli Client) SignManifest(m mig.ManifestRecord) (ret string, err error) {
+func (cli MIGClient) SignManifest(m mig.ManifestRecord) (ret string, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("SignManifest() -> %v", e)
@@ -1333,7 +1385,7 @@ func (cli Client) SignManifest(m mig.ManifestRecord) (ret string, err error) {
 // Resolves target macros; clients should pass the action target string here, and this
 // function will return the resolved target if it is a valid macro, otherwise it just
 // returns the passed target string
-func (cli Client) ResolveTargetMacro(target string) string {
+func (cli MIGClient) ResolveTargetMacro(target string) string {
 	v, err := cli.Conf.Targets.getMacro(target)
 	if err != nil {
 		return target
@@ -1342,7 +1394,7 @@ func (cli Client) ResolveTargetMacro(target string) string {
 }
 
 // EvaluateAgentTarget runs a search against the api to find all agents that match an action target string
-func (cli Client) EvaluateAgentTarget(target string) (agents []mig.Agent, err error) {
+func (cli MIGClient) EvaluateAgentTarget(target string) (agents []mig.Agent, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("EvaluateAgentTarget() -> %v", e)
@@ -1370,7 +1422,7 @@ func (cli Client) EvaluateAgentTarget(target string) (agents []mig.Agent, err er
 
 // FollowAction continuously loops over an action and prints its completion status in os.Stderr.
 // when the action reaches its expiration date, FollowAction prints its final status and returns.
-func (cli Client) FollowAction(a mig.Action, total int) (err error) {
+func (cli MIGClient) FollowAction(a mig.Action, total int) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("followAction() -> %v", e)
@@ -1442,7 +1494,7 @@ finish:
 //
 // XXX Note in the future it may be worth refactoring the action print
 // functions to make use of this, but it would require additional work.
-func (cli Client) FetchActionResults(a mig.Action) (ret []mig.Command, err error) {
+func (cli MIGClient) FetchActionResults(a mig.Action) (ret []mig.Command, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("FetchActionResults() -> %v", e)
@@ -1487,7 +1539,7 @@ func (cli Client) FetchActionResults(a mig.Action) (ret []mig.Command, err error
 	return ret, nil
 }
 
-func (cli Client) PrintActionResults(a mig.Action, show, render string) (err error) {
+func (cli MIGClient) PrintActionResults(a mig.Action, show, render string) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("PrintActionResults() -> %v", e)
@@ -1684,14 +1736,18 @@ func PrintCommandResults(cmd mig.Command, onlyFound, showAgent bool) (err error)
 	return
 }
 
+func (cli *MIGClient) GetConfiguration() Configuration {
+	return cli.Conf
+}
+
 // EnableDebug() prints debug messages to stdout
-func (cli *Client) EnableDebug() {
+func (cli *MIGClient) EnableDebug() {
 	cli.debug = true
 	return
 }
 
 // DisableDebug() disables the printing of debug messages to stdout
-func (cli *Client) DisableDebug() {
+func (cli *MIGClient) DisableDebug() {
 	cli.debug = false
 	return
 }

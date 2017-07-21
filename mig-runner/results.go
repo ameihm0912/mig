@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+var processResultsTimeout time.Duration = time.Duration(5) * time.Second
+
 // Given the name of a scheduled job, retrieve the path that should be used
 // to store the results for this job.
 func getResultsStoragePath(nm string) (rdir string, err error) {
@@ -217,7 +219,7 @@ func processResults() {
 				continue
 			}
 			reslist = append(reslist, nr)
-		case <-time.After(time.Duration(5) * time.Second):
+		case <-time.After(processResultsTimeout):
 			timeout = true
 		}
 		if !timeout {

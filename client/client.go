@@ -34,10 +34,47 @@ import (
 
 var version string
 
+// MIGHTTPClient is an interface wrapping the standard http.Client type we will
+// use to make requests.
+type MIGHTTPClient interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+// GetTransport indicates the function that will be used to request a client
+// for making requests. By default, this returns an http.Client type but can be
+// overridden to replace the standard client transport with anything that implements
+// MIGHTTPClient.
+var GetTransport = getDefaultTransport
+
+// The default transport type the MIG client will use, in this case we allocate and
+// return an http.Client.
+func getDefaultTransport(conf Configuration) MIGHTTPClient {
+	tr := &http.Transport{
+		DisableCompression: false,
+		DisableKeepAlives:  false,
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+				tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+				tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+				tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+				tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+			},
+			InsecureSkipVerify: conf.API.SkipVerifyCert,
+		},
+		Proxy: http.ProxyFromEnvironment,
+	}
+	return &http.Client{Transport: tr}
+}
+
 // A Client provides all the needed functionalities to interact with the MIG API.
 // It should be initialized with a proper configuration file.
 type Client struct {
-	API     *http.Client
+	API     MIGHTTPClient
 	Token   string
 	Conf    Configuration
 	Version string
@@ -100,26 +137,7 @@ func ClientPassphrase(s string) {
 func NewClient(conf Configuration, version string) (cli Client, err error) {
 	cli.Version = version
 	cli.Conf = conf
-	tr := &http.Transport{
-		DisableCompression: false,
-		DisableKeepAlives:  false,
-		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			CipherSuites: []uint16{
-				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-				tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-				tls.TLS_RSA_WITH_AES_128_CBC_SHA,
-				tls.TLS_RSA_WITH_AES_256_CBC_SHA,
-			},
-			InsecureSkipVerify: conf.API.SkipVerifyCert,
-		},
-		Proxy: http.ProxyFromEnvironment,
-	}
-	cli.API = &http.Client{Transport: tr}
+	cli.API = GetTransport(conf)
 	// If the client is using API key authentication to access the API, we don't have
 	// anything left to do here.
 	if conf.GPG.UseAPIKeyAuth != "" {

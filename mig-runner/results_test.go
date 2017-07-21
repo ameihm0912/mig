@@ -6,6 +6,7 @@
 package main
 
 import (
+	"github.com/spf13/afero"
 	"path"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ func TestResultsStoragePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initContext: %v", err)
 	}
+	ctx.fs = afero.NewMemMapFs()
 	rdir, err := getResultsStoragePath("test")
 	if err != nil {
 		t.Fatalf("getResultsStoragePath: %v", err)

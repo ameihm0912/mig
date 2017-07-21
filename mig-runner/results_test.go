@@ -115,6 +115,32 @@ func TestIncomingResult(t *testing.T) {
 	}
 }
 
+func TestResultsFetch(t *testing.T) {
+	var (
+		err error
+	)
+	ctx, err = initContext("./testdata/runnerfetchresults.cfg")
+	if err != nil {
+		t.Fatalf("initContext: %v", err)
+	}
+	go func() {
+		for event := range ctx.Channels.Log {
+			_, err = mig.ProcessLog(ctx.Logging, event)
+			if err != nil {
+				t.Fatalf("mig.ProcessLog: %v", err)
+			}
+		}
+	}()
+	basefs := afero.NewOsFs()
+	roBase := afero.NewReadOnlyFs(basefs)
+	ctx.fs = afero.NewCopyOnWriteFs(roBase, afero.NewMemMapFs())
+	// Reduce the default timeout delay since we want to try the results fetch
+	// immediately
+	processResultsTimeout = 0
+	go processResults()
+	time.Sleep(time.Second * 5)
+}
+
 func TestResultsStoragePath(t *testing.T) {
 	var err error
 	ctx, err = initContext("./testdata/runner.cfg")

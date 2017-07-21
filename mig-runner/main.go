@@ -143,7 +143,7 @@ func procDir(dirpath string) (err error) {
 
 	ename := path.Base(dirpath)
 	confpath := path.Join(dirpath, "entity.cfg")
-	finfo, err := os.Stat(confpath)
+	finfo, err := ctx.fs.Stat(confpath)
 	if err != nil {
 		// Don't treat this as fatal; we will just try to load it again
 		// next time.

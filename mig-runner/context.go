@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/spf13/afero"
 	"gopkg.in/gcfg.v1"
 	"mig.ninja/mig"
 	"mig.ninja/mig/client"
@@ -34,6 +35,8 @@ type context struct {
 
 	Entities   map[string]*entity
 	ClientConf client.Configuration
+
+	fs afero.Fs
 }
 
 func initContext(config string) (ctx context, err error) {
@@ -44,6 +47,10 @@ func initContext(config string) (ctx context, err error) {
 	}()
 
 	ctx = context{}
+
+	// Normal execution, set fs access up to use the standard OS filesystem
+	ctx.fs = afero.NewOsFs()
+
 	ctx.Channels.Log = make(chan mig.Log, 37)
 	ctx.Channels.Results = make(chan mig.RunnerResult, 64)
 	ctx.Channels.ExitNotify = make(chan bool, 64)

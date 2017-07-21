@@ -27,12 +27,12 @@ func getResultsStoragePath(nm string) (rdir string, err error) {
 	tstamp := time.Now().UTC().Format("20060102")
 	rdir = path.Join(ctx.Runner.RunDirectory, nm, "results", tstamp)
 
-	_, err = os.Stat(rdir)
+	_, err = ctx.fs.Stat(rdir)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			panic(err)
 		}
-		err = os.MkdirAll(rdir, 0700)
+		err = ctx.fs.MkdirAll(rdir, 0700)
 		if err != nil {
 			panic(err)
 		}
@@ -67,7 +67,7 @@ func getResults(r mig.RunnerResult) (err error) {
 		panic(err)
 	}
 	outpath = path.Join(outpath, fmt.Sprintf("%.0f.json", r.Action.ID))
-	fd, err := os.Create(outpath)
+	fd, err := ctx.fs.Create(outpath)
 	if err != nil {
 		panic(err)
 	}
@@ -109,11 +109,11 @@ func flightPath(rr mig.RunnerResult) string {
 func actionInFlight(rr mig.RunnerResult) error {
 	fpath := flightPath(rr)
 	dn, _ := path.Split(fpath)
-	err := os.MkdirAll(dn, 0700)
+	err := ctx.fs.MkdirAll(dn, 0700)
 	if err != nil {
 		return err
 	}
-	fd, err := os.Create(fpath)
+	fd, err := ctx.fs.Create(fpath)
 	if err != nil {
 		return err
 	}
@@ -133,7 +133,7 @@ func actionInFlight(rr mig.RunnerResult) error {
 // Remove action in-flight information from the file system when complete.
 func actionComplete(rr mig.RunnerResult) error {
 	fpath := flightPath(rr)
-	err := os.Remove(fpath)
+	err := ctx.fs.Remove(fpath)
 	if err != nil {
 		return err
 	}
@@ -167,7 +167,7 @@ func scanInFlight(reslist []mig.RunnerResult) ([]mig.RunnerResult, error) {
 		}
 		for _, y := range fents {
 			fpath := path.Join(fdir, y.Name())
-			fd, err := os.Open(fpath)
+			fd, err := ctx.fs.Open(fpath)
 			if err != nil {
 				return reslist, err
 			}
